@@ -13,7 +13,7 @@
 using namespace std;
 
 void ThreadForClient(int sockfd);
-//void checkSockets(vector<thread> &allthreads, vector<int> &sockfds);
+void ThreadManager(int sockfd, struct sockaddr_in cli_addr, socklen_t clilen);
 
 void error(const char *msg)
 {
@@ -52,19 +52,28 @@ int main(int argc, char *argv[])
         error("ERROR on binding");
     listen(sockfd, 5);
     clilen = sizeof(cli_addr);
-
-    vector<int> sockfds;
-    vector<thread> allthreads;
+    thread threadMan(ThreadManager, sockfd, cli_addr, clilen);
+    string qcom;
     while (true)
     {
-        sockfds.push_back(accept(sockfd, (struct sockaddr *)&cli_addr, &clilen));
-        if (sockfds.back() < 0)
-            error("ERROR on accept");
-
-        printf("server: got connection from %s port %d\n", inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
-        thread thread_obj(ThreadForClient, sockfds.back());
-        allthreads.push_back(move(thread_obj));
+        getline(cin, qcom);
+        if (qcom == string("quit"))
+        {
+            break;
+        }
     }
+    //vector<int> sockfds;
+    //vector<thread> allthreads;
+    //while (true)
+    //{
+    //    sockfds.push_back(accept(sockfd, (struct sockaddr *)&cli_addr, &clilen));
+    //    if (sockfds.back() < 0)
+    //        error("ERROR on accept");
+    //
+    //    printf("server: got connection from %s port %d\n", inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
+    //    thread thread_obj(ThreadForClient, sockfds.back());
+    //    allthreads.push_back(move(thread_obj));
+    //}
     close(sockfd);
     return 0;
 }
@@ -75,7 +84,6 @@ void ThreadForClient(int sockfd)
     ofstream outfile;
     outfile.open(string("output" + to_string(sockfd) + ".txt").c_str());
     char buffer[256];
-    send(sockfd, "Hello, world!\n", 13, 0);
     char err[1024];
     socklen_t errsize = 1024;
     while (true)
@@ -94,5 +102,21 @@ void ThreadForClient(int sockfd)
             n = read(sockfd, buffer, 255);
         }
         outfile << buffer << endl;
+    }
+}
+
+void ThreadManager(int sockfd, struct sockaddr_in cli_addr, socklen_t clilen)
+{
+    vector<int> sockfds;
+    vector<thread> allthreads;
+    while (true)
+    {
+        sockfds.push_back(accept(sockfd, (struct sockaddr *)&cli_addr, &clilen));
+        if (sockfds.back() < 0)
+            error("ERROR on accept");
+
+        printf("server: got connection from %s port %d\n", inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
+        thread thread_obj(ThreadForClient, sockfds.back());
+        allthreads.push_back(move(thread_obj));
     }
 }
