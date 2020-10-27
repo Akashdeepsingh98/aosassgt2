@@ -76,7 +76,6 @@ void Server_Threads()
     int portno = 30001;
     int sockfd, newsockfd;
     socklen_t clilen;
-    char buffer[256];
     struct sockaddr_in serv_addr, cli_addr;
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -91,11 +90,16 @@ void Server_Threads()
     clilen = sizeof(cli_addr);
 
     int clientsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
-
+    cout << clientsockfd << endl;
     char buffer[512 * 1024];
     ifstream f("trial.txt");
+    bzero(buffer, sizeof(buffer));
     while (!f.eof())
     {
-        f.read(buffer, 512 * 1024);
+        f.read(buffer, sizeof(buffer));
+        cout << buffer << endl;
+        int n = write(sockfd, buffer, strlen(buffer));
     }
+    f.close();
+    close(sockfd);
 }
