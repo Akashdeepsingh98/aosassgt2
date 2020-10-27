@@ -86,8 +86,7 @@ void ThreadForClient(int sockfd)
     ofstream outfile;
     outfile.open(string("output" + to_string(sockfd) + ".txt").c_str());
     char buffer[256];
-    char err[1024];
-    socklen_t errsize = 1024;
+
     while (true)
     {
         bzero(buffer, 256);
