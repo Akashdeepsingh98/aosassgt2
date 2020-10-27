@@ -7,8 +7,11 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <string>
+#include <fstream>
 #include <iostream>
 using namespace std;
+
+void Server_Threads();
 
 void error(const char *msg)
 {
@@ -46,22 +49,53 @@ int main(int argc, char *argv[])
     serv_addr.sin_port = htons(portno);
     if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
         error("ERROR connecting");
-    printf("Please enter the message: ");
-    bzero(buffer, 256);
-    while (true)
-    {
-        fgets(buffer, 255, stdin);
-        n = write(sockfd, buffer, strlen(buffer));
-        if (n < 0)
-            error("ERROR writing to socket");
-        if (string(buffer).substr(0, 4) == string("quit"))
-            break;
-        bzero(buffer, 256);
-    }
-    n = read(sockfd, buffer, 255);
-    if (n < 0)
-        error("ERROR reading from socket");
-    printf("%s\n", buffer);
+
+    Server_Threads();
+    //printf("Please enter the message: ");
+    //bzero(buffer, 256);
+    //while (true)
+    //{
+    //    fgets(buffer, 255, stdin);
+    //    n = write(sockfd, buffer, strlen(buffer));
+    //    if (n < 0)
+    //        error("ERROR writing to socket");
+    //    if (string(buffer).substr(0, 4) == string("quit"))
+    //        break;
+    //    bzero(buffer, 256);
+    //}
+    //n = read(sockfd, buffer, 255);
+    //if (n < 0)
+    //    error("ERROR reading from socket");
+    //printf("%s\n", buffer);
     close(sockfd);
     return 0;
+}
+
+void Server_Threads()
+{
+    int portno = 30001;
+    int sockfd, newsockfd;
+    socklen_t clilen;
+    char buffer[256];
+    struct sockaddr_in serv_addr, cli_addr;
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    bzero((char *)&serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    serv_addr.sin_port = htons(portno);
+
+    if (bind(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+        error("ERROR on binding");
+    listen(sockfd, 5);
+    clilen = sizeof(cli_addr);
+
+    int clientsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
+
+    char buffer[512 * 1024];
+    ifstream f("trial.txt");
+    while (!f.eof())
+    {
+        f.read(buffer, 512 * 1024);
+    }
 }
