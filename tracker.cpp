@@ -14,9 +14,9 @@
 using namespace std;
 
 void error(char *msg);
-void error(string &msg);
-void Thread_Manager(int my_sock_fd);
-void ClientThread(int client_sock_fd);
+void error(string msg);
+void Client_Thread_Manager(int my_sock_fd);
+void ClientThread(int client_sock_fd, vector<vector<string>> &client_data);
 
 int main(int argc, char *argv[])
 {
@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
 
     listen(my_sock_fd, 10);
 
-    thread threadMan(Thread_Manager, my_sock_fd);
+    thread threadMan(Client_Thread_Manager, my_sock_fd);
 
     string user_comm;
     while (true)
@@ -68,8 +68,9 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void Thread_Manager(int my_sock_fd)
+void Client_Thread_Manager(int my_sock_fd)
 {
+    vector<vector<string>> client_data;
     struct sockaddr_in client_addr;
     socklen_t client_length = sizeof(client_addr);
     vector<int> client_sock_fds;
@@ -80,13 +81,13 @@ void Thread_Manager(int my_sock_fd)
         client_sock_fds.push_back(accept(my_sock_fd, (struct sockaddr *)&client_addr, &client_length));
         if (client_sock_fds.back() < 0)
         {
-            error(string("Cannot accept socket connection") + client_sock_fds.size());
+            error(string("Cannot accept socket connection" + to_string(client_sock_fds.size())));
         }
-        thread thread_obj(ClientThread, client_sock_fds.back());
+        thread thread_obj(ClientThread, client_sock_fds.back(), client_data);
     }
 }
 
-void ClientThread(int client_sock_fd)
+void ClientThread(int client_sock_fd, vector<vector<string>> &client_data)
 {
     thread::id this_id = this_thread::get_id();
     char buffer[512 * 1024];
@@ -105,14 +106,39 @@ void ClientThread(int client_sock_fd)
 
             stringstream ss(buffer);
             string command;
-            ss>>command;
-            if(command=="create_user")
+            ss >> command;
+            if (command == "create_user")
             {
-
+                string user_id, passwd;
+                ss >> user_id >> passwd;
+                ofstream f("trial.txt");
+                f.write(user_id.c_str(), user_id.size());
+                f.write(passwd.c_str(), passwd.size());
+                f.close();
             }
-            else if(command == "login")
+            else if (command == "login")
             {
-
+            }
+            else if (command == "create_group")
+            {
+            }
+            else if (command == "join_group")
+            {
+            }
+            else if (command == "leave_group")
+            {
+            }
+            else if (command == "logout")
+            {
+            }
+            else if (command == "download_file")
+            {
+            }
+            else if (command == "upload_file")
+            {
+            }
+            else if (command == "list_groups")
+            {
             }
         }
     }
@@ -124,7 +150,7 @@ void error(char *msg)
     exit(1);
 }
 
-void error(string &msg)
+void error(string msg)
 {
     cout << "Error: " << msg << endl;
     exit(1);
