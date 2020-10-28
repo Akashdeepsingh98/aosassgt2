@@ -148,7 +148,7 @@ void ClientThread(int client_sock_fd, struct sockaddr_in client_addr)
             }
             else if (command == "join_group")
             {
-
+                
             }
             else if (command == "leave_group")
             {
