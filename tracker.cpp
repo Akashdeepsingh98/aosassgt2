@@ -8,6 +8,7 @@
 #include <vector>
 #include <thread>
 #include <fstream>
+#include <string>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sstream>
@@ -16,13 +17,17 @@ using namespace std;
 void error(char *msg);
 void error(string msg);
 void Client_Thread_Manager(int my_sock_fd);
-void ClientThread(int client_sock_fd, vector<vector<string>> &client_data);
+void ClientThread(int client_sock_fd, struct sockaddr_in client_addr);
+void write_clientData_tofile(int myno);
+
+vector<vector<string>> client_data;
+string globalinstr = "";
 
 int main(int argc, char *argv[])
 {
     if (argc != 3)
     {
-        error("Need 3 arguments to start tracker");
+        error(string("Need 3 arguments to start tracker"));
     }
     // read tracker info
     ifstream trackerInfoFile(argv[1]);
@@ -48,7 +53,7 @@ int main(int argc, char *argv[])
 
     if (bind(my_sock_fd, (struct sockaddr *)&my_addr, sizeof(my_addr)) < 0)
     {
-        error("Cannot bind my_sock_fd and my_addr");
+        error(string("Cannot bind my_sock_fd and my_addr"));
     }
 
     listen(my_sock_fd, 10);
@@ -75,7 +80,7 @@ void Client_Thread_Manager(int my_sock_fd)
     socklen_t client_length = sizeof(client_addr);
     vector<int> client_sock_fds;
     vector<thread> client_threads;
-    while (true)
+    while (globalinstr != "quit")
     {
         bzero((char *)&client_addr, client_length);
         client_sock_fds.push_back(accept(my_sock_fd, (struct sockaddr *)&client_addr, &client_length));
@@ -83,15 +88,18 @@ void Client_Thread_Manager(int my_sock_fd)
         {
             error(string("Cannot accept socket connection" + to_string(client_sock_fds.size())));
         }
-        thread thread_obj(ClientThread, client_sock_fds.back(), client_data);
+        thread thread_obj(ClientThread, client_sock_fds.back(), client_addr);
+        client_threads.push_back(move(thread_obj));
     }
 }
 
-void ClientThread(int client_sock_fd, vector<vector<string>> &client_data)
+void ClientThread(int client_sock_fd, struct sockaddr_in client_addr)
 {
+    bool loggedin = false;
+    string user_id;
     thread::id this_id = this_thread::get_id();
     char buffer[512 * 1024];
-    while (true)
+    while (globalinstr != "quit")
     {
         bzero(buffer, sizeof(buffer));
         int n = 0;
@@ -109,21 +117,38 @@ void ClientThread(int client_sock_fd, vector<vector<string>> &client_data)
             ss >> command;
             if (command == "create_user")
             {
-                string user_id, passwd;
+                string passwd;
                 ss >> user_id >> passwd;
-                ofstream f("trial.txt");
-                f.write(user_id.c_str(), user_id.size());
-                f.write(passwd.c_str(), passwd.size());
-                f.close();
+                vector<string> t;
+                t.push_back(user_id);
+                t.push_back(passwd);
+                client_data.push_back(t);
             }
             else if (command == "login")
             {
+                string passwd;
+                ss >> user_id >> passwd;
+                for (int i = 0; i < client_data.size(); i++)
+                {
+                }
+                loggedin = true;
             }
             else if (command == "create_group")
             {
+                string group_id;
+                ss >> group_id;
+                for(int i=0;i<client_data.size();i++)
+                {
+                    if(user_id==client_data[i][0])
+                    {
+                        client_data[i].push_back(group_id);
+                        i=client_data.size();
+                    }
+                }
             }
             else if (command == "join_group")
             {
+
             }
             else if (command == "leave_group")
             {
@@ -141,6 +166,20 @@ void ClientThread(int client_sock_fd, vector<vector<string>> &client_data)
             {
             }
         }
+    }
+    close(client_sock_fd);
+}
+
+void write_clientData_tofile(int myno)
+{
+    ofstream f("tracker" + to_string(myno) + "/clientData.txt");
+    for (int i = 0; i < client_data.size(); i++)
+    {
+        for (int j = 0; j < client_data[i].size(); i++)
+        {
+            f << client_data[i][j] << " ";
+        }
+        f << "\n";
     }
 }
 
