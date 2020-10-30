@@ -138,13 +138,13 @@ void ClientThread(int client_sock_fd, struct sockaddr_in client_addr, int myno)
 
             if (command == "create_user")
             {
-                string passwd;
-                ss >> user_id >> passwd;
+                string passwd, ipaddr, portno;
+                ss >> user_id >> passwd >> ipaddr >> portno;
                 vector<string> t;
                 t.push_back(user_id);
                 t.push_back(passwd);
-                string ipaddr = to_string(client_addr.sin_addr.s_addr);
-                string portno = to_string(ntohs(client_addr.sin_port));
+                //string ipaddr = to_string(client_addr.sin_addr.s_addr);
+                //string portno = to_string(ntohs(client_addr.sin_port));
                 t.push_back(ipaddr);
                 t.push_back(portno);
                 client_data.push_back(t);
@@ -158,21 +158,23 @@ void ClientThread(int client_sock_fd, struct sockaddr_in client_addr, int myno)
             }
             else if (command == "login")
             {
-                string passwd;
-                ss >> user_id >> passwd;
+                string passwd, ipaddr, portno;
+                ss >> user_id >> passwd >> ipaddr >> portno;
                 for (int i = 0; i < client_data.size(); i++)
                 {
                     if (client_data[i][0] == user_id)
                     {
-                        client_data[i][2] = to_string(client_addr.sin_addr.s_addr);
-                        client_data[i][3] = to_string(ntohs(client_addr.sin_port));
+                        //client_data[i][2] = to_string(client_addr.sin_addr.s_addr);
+                        //client_data[i][3] = to_string(ntohs(client_addr.sin_port));
+                        client_data[i][2] = ipaddr;
+                        client_data[i][3] = portno;
                         i = client_data.size();
                     }
                 }
                 loggedin = true;
-                logfile.open("logfile.txt", ios_base::app);
-                logfile << "logged in\n";
-                logfile.close();
+                //logfile.open("logfile.txt", ios_base::app);
+                //logfile << "logged in\n";
+                //logfile.close();
                 {
                     string temp = "user logged in";
                     write(client_sock_fd, temp.c_str(), temp.size());
@@ -234,6 +236,7 @@ void ClientThread(int client_sock_fd, struct sockaddr_in client_addr, int myno)
                             string data = client_data[i][2] + " " + client_data[i][3];
                             int n = write(client_sock_fd, data.c_str(), data.size());
                             found = true;
+                            j = client_data[i].size();
                         }
                     }
                     if (found)
