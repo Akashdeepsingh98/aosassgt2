@@ -13,6 +13,7 @@
 #include <arpa/inet.h>
 #include <sstream>
 #include <netdb.h>
+#include <atomic>
 using namespace std;
 
 void error(char *msg);
@@ -68,6 +69,7 @@ int main(int argc, char *argv[])
         getline(cin, user_comm);
         if (user_comm == "quit")
         {
+            globalinstr = "quit";
             break;
         }
     }
@@ -93,6 +95,10 @@ void Client_Thread_Manager(int my_sock_fd, int mytrackerno)
         thread thread_obj(ClientThread, client_sock_fds.back(), client_addr, mytrackerno);
         client_threads.push_back(move(thread_obj));
     }
+    for (int i = 0; i < client_threads.size(); i++)
+    {
+        client_threads[i].join();
+    }
 }
 
 void ClientThread(int client_sock_fd, struct sockaddr_in client_addr, int myno)
@@ -100,14 +106,16 @@ void ClientThread(int client_sock_fd, struct sockaddr_in client_addr, int myno)
     bool loggedin = false;
     string user_id;
     thread::id this_id = this_thread::get_id();
-    char buffer[512 * 1024];
+    char buffer[512 * 1024]; //where stuff from clients are stored
+
     ofstream logfile("logfile.txt");
     logfile.close();
+
     while (globalinstr != "quit")
     {
         bzero(buffer, sizeof(buffer));
         int n = 0;
-        while (n <= 0)
+        while (n <= 0 && globalinstr != "quit")
         {
             //if (write(client_sock_fd, buffer, sizeof(buffer) - 1) == -1)
             //{
@@ -123,6 +131,7 @@ void ClientThread(int client_sock_fd, struct sockaddr_in client_addr, int myno)
             stringstream ss(buffer);
             string command;
             ss >> command;
+
             logfile.open("logfile.txt", ios_base::app);
             logfile << command << "\n";
             logfile.close();
@@ -209,6 +218,7 @@ void ClientThread(int client_sock_fd, struct sockaddr_in client_addr, int myno)
             }
             else if (command == "logout")
             {
+                return;
             }
             else if (command == "download_file")
             {
@@ -231,10 +241,10 @@ void ClientThread(int client_sock_fd, struct sockaddr_in client_addr, int myno)
                         i = client_data.size();
                     }
                 }
-                {
-                    string temp = "download accept";
-                    write(client_sock_fd, temp.c_str(), temp.size());
-                }
+                //{
+                //    string temp = "download accept";
+                //    write(client_sock_fd, temp.c_str(), temp.size());
+                //}
             }
             else if (command == "upload_file")
             {
