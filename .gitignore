@@ -5,3 +5,7 @@ output*
 client1.cpp
 client2.cpp
 trial.txt
+clientData.txt
+logfile.txt
+.vscode
+.vscode/*

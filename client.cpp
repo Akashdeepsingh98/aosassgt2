@@ -14,6 +14,11 @@
 #include <sstream>
 using namespace std;
 
+void ReceiveThread();
+void SendThread();
+void RecThrMan();
+void SendThrMan();
+
 int main(int argc, char *argv[])
 {
     int server_sock_fd, server_port = 20001;
@@ -41,9 +46,17 @@ int main(int argc, char *argv[])
         cout << "Cannot connect to tracker" << endl;
         exit(1);
     }
+    char bf[1024];
 
-    string buffer = "create_user akash qwerty";
-    int n = write(server_sock_fd, buffer.c_str(), sizeof(buffer));
-    cout << n << endl;
+    thread recthrman(RecThrMan);
+    thread senthrman(SendThrMan);
+
+    string ucom = ""; //user command
+    while (true)
+    {
+        getline(cin, ucom);
+        
+    }
+
     close(server_sock_fd);
 }
