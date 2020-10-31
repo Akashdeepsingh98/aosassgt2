@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <arpa/inet.h>
 #include <sstream>
+#include <dirent.h>
 using namespace std;
 
 void ReceiveThread(string ip, string port, string filename, string dest_path);
@@ -209,6 +210,7 @@ int main(int argc, char *argv[])
 
 void ReceiveThread(string ip, string port, string filename, string dest_path)
 {
+    // prepare connection to sender peer
     int sender_sockfd;
     struct sockaddr_in sender_addr;
     sender_sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -216,31 +218,57 @@ void ReceiveThread(string ip, string port, string filename, string dest_path)
     sender_addr.sin_family = AF_INET;
     bcopy((char *)gethostbyname(ip.c_str())->h_addr, (char *)&sender_addr.sin_addr.s_addr, gethostbyname(ip.c_str())->h_length);
     sender_addr.sin_port = htons(atoi(port.c_str()));
+
     ofstream clientlog("clientlog.txt", ios_base::app);
-    clientlog.close();
+
     if (connect(sender_sockfd, (struct sockaddr *)&sender_addr, sizeof(sender_addr)) < 0)
     {
-        clientlog.open("clientlog.txt", ios_base::app);
         clientlog << "cannot connect\n";
-        clientlog.close();
+        return;
+    }
+    // ready to go
+
+    // the main buffer
+    char mainbuffer[512 * 1024 + 1];
+    bzero(mainbuffer, sizeof(mainbuffer));
+    // give the filename we want
+    int n = write(sender_sockfd, filename.c_str(), filename.size());
+
+    // let peer tell about whether it has entire file or not
+    n = read(sender_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
+    clientlog << mainbuffer << endl;
+    if (string(mainbuffer) == "stop")
+    {
         return;
     }
 
-    char mainbuffer[512 * 1024 + 1];
-    bzero(mainbuffer, sizeof(mainbuffer));
-    int n = write(sender_sockfd, filename.c_str(), filename.size());
-
-    ofstream f(dest_path);
-    n = read(sender_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
-
-    while (string(mainbuffer) != ip + ":" + port)
+    int chunkcount;
     {
-        f << mainbuffer;
-        bzero(mainbuffer, sizeof(mainbuffer));
-        n = read(sender_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
+        stringstream ss;
+        ss << mainbuffer;
+        ss >> chunkcount;
     }
 
-    f.close();
+    {
+        string t = "1 " + to_string(chunkcount);
+        n = write(sender_sockfd, t.c_str(), t.size());
+    }
+
+    clientlog << dest_path << endl;
+    mkdir(dest_path.c_str(), 0777);
+    bzero(mainbuffer, sizeof(mainbuffer));
+    for (int i = 1; i <= chunkcount; i++)
+    {
+        ofstream output;
+        string fullchunkname = dest_path + "/" + filename + "." + to_string(i);
+        clientlog << fullchunkname << endl;
+        output.open(fullchunkname, ios::out | ios::trunc | ios::binary);
+        n = read(sender_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
+        output << mainbuffer;
+        bzero(mainbuffer, sizeof(mainbuffer));
+        output.close();
+    }
+    clientlog.close();
 }
 
 void SendThrMan(int mysockfd, string myip, string myport)
@@ -259,52 +287,96 @@ void SendThrMan(int mysockfd, string myip, string myport)
 
 void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, string myport)
 {
+    ofstream senderlog("senderlog.txt", ios::app);
     char mainbuffer[512 * 1024 + 1];
     bzero(mainbuffer, sizeof(mainbuffer));
+
+    // get name of file peer wants
     int n = read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
     string filename = mainbuffer;
     bzero(mainbuffer, sizeof(mainbuffer));
 
-    ofstream senderlog("senderlog.txt", ios_base::app);
-    senderlog << filename << endl;
-    senderlog.close();
+    // this ifstream will be used by every chunk
+    ifstream general;
+    general.open(filename, ios::in | ios::binary);
 
-    FILE *file = fopen(filename.c_str(), "r");
-    if (file == NULL)
+    // only send if all chunks are present i.e. this peer is a seeder
+    if (general.is_open())
     {
-        ofstream senderlog("senderlog.txt", ios_base::app);
-        senderlog << "cannot open file" << endl;
-        senderlog.close();
+        senderlog << filename << endl;
+        int j;
+        for (j = 0; j < uploadedfs.size(); j++)
+        {
+            if (uploadedfs[j] == filename)
+            {
+                break;
+            }
+        }
+        DIR *dp;
+        int chunkcount = 0;
+        struct dirent *ep;
+        dp = opendir(string(to_string(j) + "/").c_str());
+
+        if (dp != NULL)
+        {
+            while (ep = readdir(dp))
+                chunkcount++;
+            closedir(dp);
+        }
+        chunkcount -= 2;
+        n = write(client_sockfd, to_string(chunkcount).c_str(), to_string(chunkcount).size());
+        senderlog << chunkcount << endl;
     }
     else
     {
-        ofstream senderlog("senderlog.txt", ios_base::app);
-        senderlog << "opened file" << endl;
-        senderlog.close();
+        n = write(client_sockfd, string("stop").c_str(), string("stop").size());
+        return;
     }
-    senderlog.open("senderlog.txt", ios_base::app);
-    char c;
-    int i = 0;
-    while ((c = fgetc(file)) != EOF)
+
+    // get the upper and lower bounds of the chunks to read
+    n = read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
+    int lowerbound, upperbound;
     {
-        senderlog << i << " ";
-        mainbuffer[i++] = c;
-        if (i >= 512 * 1024)
+        stringstream ss;
+        ss << mainbuffer;
+        ss >> lowerbound >> upperbound;
+    }
+    bzero(mainbuffer, sizeof(mainbuffer));
+    senderlog << lowerbound << " " << upperbound << endl;
+    // get the folder where the files are
+    int j;
+    for (j = 0; j < uploadedfs.size(); j++)
+    {
+        if (uploadedfs[j] == filename)
         {
-            i = 0;
-            senderlog << mainbuffer[0] << endl;
-            n = write(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
-            bzero(mainbuffer, sizeof(mainbuffer));
+            break;
         }
     }
-    n = write(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
-    bzero(mainbuffer, sizeof(mainbuffer));
-    senderlog.close();
+    string chunkpref = to_string(j) + "/" + filename;
 
+    for (int i = lowerbound; i <= upperbound; i++)
     {
-        string t = myip + ":" + myport;
-        n = write(client_sockfd, t.c_str(), t.size());
+        string chunkname = chunkpref + "." + to_string(i);
+        FILE *chunk = fopen(chunkname.c_str(), "r");
+        if (chunk == NULL)
+        {
+            senderlog << "cannot open file" << endl;
+        }
+        else
+        {
+            senderlog << "opened file" << endl;
+        }
+        char c;
+        int j = 0;
+        while ((c = fgetc(chunk)) != EOF)
+        {
+            mainbuffer[j++] = c;
+        }
+        n = write(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
+        senderlog << mainbuffer << endl;
+        bzero(mainbuffer, sizeof(mainbuffer));
     }
+    senderlog.close();
 }
 
 void error(char *msg)
