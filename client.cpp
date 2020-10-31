@@ -8,8 +8,10 @@
 #include <vector>
 #include <thread>
 #include <fstream>
+#include <bits/stdc++.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <sys/stat.h>
 #include <arpa/inet.h>
 #include <sstream>
 using namespace std;
@@ -20,6 +22,8 @@ void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, 
 void SendThrMan(int mysockfd, string myip, string myport);
 void error(string msg);
 void error(char *msg);
+
+vector<string> uploadedfs;
 
 int main(int argc, char *argv[])
 {
@@ -133,6 +137,71 @@ int main(int argc, char *argv[])
 
             recvthrs.push_back(thread(ReceiveThread, ip, port, filename, dest_path));
         }
+        else if (command == "upload_file")
+        {
+            ofstream senderlog;
+            string fn; // the file to upload
+            ss >> fn;
+            // make a directory to store chunks for each file
+            // linearly name the directories starting from 0
+            // use the index of a filename in uploadedfs to
+            // determine folder name when reading
+            struct stat info;
+            if (mkdir(to_string(uploadedfs.size()).c_str(), 0777) == -1 && stat(to_string(uploadedfs.size()).c_str(), &info) == 0)
+            {
+                senderlog.open("senderlog.txt");
+                senderlog << "cannot make directory\n";
+                senderlog.close();
+            }
+            else
+            {
+                uploadedfs.push_back(fn);
+                //read from this file
+                ifstream mainfile;
+                mainfile.open(fn, ios::in | ios::binary);
+                if (mainfile.is_open())
+                {
+                    // an ofstream used by each chunk
+                    ofstream output;
+                    // count current chunk number
+                    int counter = 1;
+                    string fullChunkName;
+
+                    // chunks will temporarily be stored in this buffer
+                    char chunkbf[512 * 1024];
+                    bzero(chunkbf, sizeof(chunkbf));
+
+                    while (!mainfile.eof())
+                    {
+                        // each chunk name starts with filename and append a number at the end after a dot
+                        fullChunkName = to_string(uploadedfs.size() - 1) + "/" + fn + "." + to_string(counter);
+                        output.open(fullChunkName, ios::out | ios::trunc | ios::binary);
+                        bzero(chunkbf, sizeof(chunkbf));
+                        if (output.is_open())
+                        {
+                            mainfile.read(chunkbf, sizeof(chunkbf));
+                            output << chunkbf;
+                            output.close();
+                            counter++;
+                        }
+                        else
+                        {
+                            senderlog.open("senderlog.txt");
+                            senderlog << "cannot open files for chunks\n";
+                            senderlog.close();
+                        }
+                    }
+
+                    mainfile.close();
+                }
+                else
+                {
+                    senderlog.open("senderlog.txt", ios::app);
+                    senderlog << "cannot open file to read\n";
+                    senderlog.close();
+                }
+            }
+        }
     }
 
     close(server_sock_fd);
@@ -170,7 +239,7 @@ void ReceiveThread(string ip, string port, string filename, string dest_path)
         bzero(mainbuffer, sizeof(mainbuffer));
         n = read(sender_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
     }
-    f << mainbuffer;
+
     f.close();
 }
 
@@ -231,20 +300,11 @@ void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, 
     n = write(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
     bzero(mainbuffer, sizeof(mainbuffer));
     senderlog.close();
-    //ifstream f(filename);
-    //while (f.read(mainbuffer, sizeof(mainbuffer) - 1))
-    //{
-    //    ofstream clientlog("senderlog.txt", ios_base::app);
-    //    clientlog << mainbuffer << endl;
-    //    clientlog.close();
-    //    n = write(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
-    //    bzero(mainbuffer, sizeof(mainbuffer));
-    //}
+
     {
         string t = myip + ":" + myport;
         n = write(client_sockfd, t.c_str(), t.size());
     }
-    //f.close();
 }
 
 void error(char *msg)
