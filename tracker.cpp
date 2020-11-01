@@ -1,3 +1,4 @@
+#include <map>
 #include <stdio.h>
 #include <stdlib.h>
 #include <iostream>
@@ -13,39 +14,48 @@
 #include <arpa/inet.h>
 #include <sstream>
 #include <netdb.h>
-#include <atomic>
 using namespace std;
+
+typedef struct
+{
+    string user_id;
+    string passwd;
+    string ipaddress;
+    string portno;
+    vector<string> groups;
+} Client;
 
 void error(char *msg);
 void error(string msg);
-void Client_Thread_Manager(int my_sock_fd, int myno);
+void Client_Thread_Manager(int my_sock_fd, int mytrackerno);
 void ClientThread(int client_sock_fd, struct sockaddr_in client_addr, int myno);
-void write_clientData_tofile(int myno);
-
-vector<vector<string>> client_data;
-// store as userid, passwd, ipaddr, portno, groups it created
+void saveClientData(int myno);
 string globalinstr = "";
+map<string, Client *> client_data;
+map<string, string> groups;
 
 int main(int argc, char *argv[])
 {
     if (argc != 3)
     {
-        error(string("Need 3 arguments to start tracker"));
+        error(string("Args to start tracker- tracker_info and number"));
     }
-    // read tracker info
-    ifstream trackerInfoFile(argv[1]);
-    int mytrackerno = atoi(argv[2]);
 
     string my_ip_addr;
     string my_port_str;
-
-    for (int i = 0; i < mytrackerno; i++)
+    int my_port_no;
+    int mytrackerno = atoi(argv[2]);
     {
-        getline(trackerInfoFile, my_ip_addr);
-        getline(trackerInfoFile, my_port_str);
+        ifstream trackerInfoFile(argv[1]);
+        for (int i = 0; i < mytrackerno; i++)
+        {
+            getline(trackerInfoFile, my_ip_addr);
+            getline(trackerInfoFile, my_port_str);
+        }
+        my_port_no = atoi(my_port_str.c_str());
+        trackerInfoFile.close();
     }
-    int my_port_no = atoi(my_port_str.c_str());
-    trackerInfoFile.close();
+    // got the ipaddress and port number
 
     int my_sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in my_addr;
@@ -53,12 +63,10 @@ int main(int argc, char *argv[])
     my_addr.sin_family = AF_INET;
     my_addr.sin_addr.s_addr = INADDR_ANY;
     my_addr.sin_port = htons(my_port_no);
-
     if (bind(my_sock_fd, (struct sockaddr *)&my_addr, sizeof(my_addr)) < 0)
     {
         error(string("Cannot bind my_sock_fd and my_addr"));
     }
-
     listen(my_sock_fd, 10);
 
     thread threadMan(Client_Thread_Manager, my_sock_fd, mytrackerno);
@@ -79,11 +87,11 @@ int main(int argc, char *argv[])
 
 void Client_Thread_Manager(int my_sock_fd, int mytrackerno)
 {
-    vector<vector<string>> client_data;
     struct sockaddr_in client_addr;
     socklen_t client_length = sizeof(client_addr);
     vector<int> client_sock_fds;
     vector<thread> client_threads;
+
     while (globalinstr != "quit")
     {
         bzero((char *)&client_addr, client_length);
@@ -95,128 +103,69 @@ void Client_Thread_Manager(int my_sock_fd, int mytrackerno)
         thread thread_obj(ClientThread, client_sock_fds.back(), client_addr, mytrackerno);
         client_threads.push_back(move(thread_obj));
     }
-    for (int i = 0; i < client_threads.size(); i++)
-    {
-        client_threads[i].join();
-    }
 }
 
 void ClientThread(int client_sock_fd, struct sockaddr_in client_addr, int myno)
 {
     bool loggedin = false;
     string user_id;
-    thread::id this_id = this_thread::get_id();
-    char buffer[512 * 1024]; //where stuff from clients are stored
+    char buffer[512 * 1024];
 
-    ofstream logfile("logfile.txt");
-    logfile.close();
-
+    ofstream trackerlog("trackerlog.txt");
+    // whenever an instruction is read from client the inner loop breaks and restarts
     while (globalinstr != "quit")
     {
         bzero(buffer, sizeof(buffer));
         int n = 0;
         while (n <= 0 && globalinstr != "quit")
         {
-            //if (write(client_sock_fd, buffer, sizeof(buffer) - 1) == -1)
-            //{
-            //    logfile.open("logfile.txt", ios_base::app);
-            //    logfile << "no connection\n";
-            //    logfile.close();
-            //    close(client_sock_fd);
-            //    return;
-            //}
-
             n = read(client_sock_fd, buffer, sizeof(buffer) - 1);
-
             stringstream ss(buffer);
             string command;
             ss >> command;
 
-            logfile.open("logfile.txt", ios_base::app);
-            logfile << command << "\n";
-            logfile.close();
+            trackerlog << buffer << endl;
 
             if (command == "create_user")
             {
                 string passwd, ipaddr, portno;
                 ss >> user_id >> passwd >> ipaddr >> portno;
-                vector<string> t;
-                t.push_back(user_id);
-                t.push_back(passwd);
-                //string ipaddr = to_string(client_addr.sin_addr.s_addr);
-                //string portno = to_string(ntohs(client_addr.sin_port));
-                t.push_back(ipaddr);
-                t.push_back(portno);
-                client_data.push_back(t);
-                logfile.open("logfile.txt", ios_base::app);
-                logfile << "user " << user_id << " " << passwd << " " << ipaddr << " " << portno << "\n";
-                logfile.close();
-                {
-                    string temp = "created user";
-                    write(client_sock_fd, temp.c_str(), temp.size());
-                }
+                Client *newclient = new Client;
+                newclient->user_id = user_id;
+                newclient->passwd = passwd;
+                newclient->ipaddress = ipaddr;
+                newclient->portno = portno;
+                trackerlog << newclient->user_id << " " << newclient->passwd << " " << newclient->ipaddress << " " << newclient->portno << endl;
+                client_data[user_id] = newclient;
+                string temp = "user created";
+                write(client_sock_fd, temp.c_str(), temp.size());
             }
             else if (command == "login")
             {
                 string passwd, ipaddr, portno;
                 ss >> user_id >> passwd >> ipaddr >> portno;
-                for (int i = 0; i < client_data.size(); i++)
-                {
-                    if (client_data[i][0] == user_id)
-                    {
-                        //client_data[i][2] = to_string(client_addr.sin_addr.s_addr);
-                        //client_data[i][3] = to_string(ntohs(client_addr.sin_port));
-                        client_data[i][2] = ipaddr;
-                        client_data[i][3] = portno;
-                        i = client_data.size();
-                    }
-                }
+                client_data[user_id]->ipaddress = ipaddr;
+                client_data[user_id]->portno = portno;
                 loggedin = true;
-                //logfile.open("logfile.txt", ios_base::app);
-                //logfile << "logged in\n";
-                //logfile.close();
-                {
-                    string temp = "user logged in";
-                    write(client_sock_fd, temp.c_str(), temp.size());
-                }
+                string temp = "user logged in";
+                write(client_sock_fd, temp.c_str(), temp.size());
             }
             else if (command == "create_group")
             {
                 string group_id;
                 ss >> group_id;
-                for (int i = 0; i < client_data.size(); i++)
-                {
-                    if (user_id == client_data[i][0])
-                    {
-                        client_data[i].push_back(group_id);
-                        i = client_data.size();
-                    }
-                }
-                {
-                    string temp = "group created";
-                    write(client_sock_fd, temp.c_str(), temp.size());
-                }
+                client_data[user_id]->groups.push_back(group_id);
+                groups[group_id] = user_id;
+                string temp = "group created";
+                write(client_sock_fd, temp.c_str(), temp.size());
             }
             else if (command == "join_group")
             {
                 string group_id;
                 ss >> group_id;
-                for (int i = 0; i < client_data.size(); i++)
-                {
-                    for (int j = 4; j < client_data[i].size(); j++)
-                    {
-                        if (client_data[i][j] == group_id)
-                        {
-                            string data = client_data[i][2] + " " + client_data[i][3];
-                            int n = write(client_sock_fd, data.c_str(), data.size());
-                            i = client_data.size();
-                            j = client_data[i].size();
-                        }
-                    }
-                }
-            }
-            else if (command == "leave_group")
-            {
+                string master = groups[group_id];
+                string masterdata = client_data[master]->ipaddress + " " + client_data[master]->portno;
+                write(client_sock_fd, masterdata.c_str(), masterdata.size());
             }
             else if (command == "logout")
             {
@@ -226,51 +175,35 @@ void ClientThread(int client_sock_fd, struct sockaddr_in client_addr, int myno)
             {
                 string group_id;
                 ss >> group_id;
-                bool found = false;
-                for (int i = 0; i < client_data.size(); i++)
-                {
-                    for (int j = 4; j < client_data[i].size(); j++)
-                    {
-                        if (client_data[i][j] == group_id)
-                        {
-                            string data = client_data[i][2] + " " + client_data[i][3];
-                            int n = write(client_sock_fd, data.c_str(), data.size());
-                            found = true;
-                            j = client_data[i].size();
-                        }
-                    }
-                    if (found)
-                    {
-                        i = client_data.size();
-                    }
-                }
-                //{
-                //    string temp = "download accept";
-                //    write(client_sock_fd, temp.c_str(), temp.size());
-                //}
+                string master = groups[group_id];
+                string masterdata = client_data[master]->ipaddress + " " + client_data[master]->portno;
+                write(client_sock_fd, masterdata.c_str(), masterdata.size());
             }
-            else if (command == "upload_file")
-            {
-            }
-            else if (command == "list_groups")
-            {
-            }
-            write_clientData_tofile(myno);
         }
+        saveClientData(myno);
     }
-    close(client_sock_fd);
+
+    trackerlog.close();
 }
 
-void write_clientData_tofile(int myno)
+void saveClientData(int myno)
 {
-    ofstream f("clientData.txt");
-    for (int i = 0; i < client_data.size(); i++)
+    ofstream f("clientData" + to_string(myno) + ".txt");
+    for (auto it = client_data.begin(); it != client_data.end(); it++)
     {
-        for (int j = 0; j < client_data[i].size(); j++)
+        f << it->second->user_id << " " << it->second->passwd << " " << it->second->ipaddress << " " << it->second->portno << " ";
+        for (int i = 0; i < it->second->groups.size(); i++)
         {
-            f << client_data[i][j] << " ";
+            f << it->second->groups[i] << " ";
         }
-        f << "\n";
+        f << endl;
+    }
+    f.close();
+
+    f.open("groupmasters" + to_string(myno) + ".txt");
+    for (auto it = groups.begin(); it != groups.end(); it++)
+    {
+        f << it->first << " " << it->second << endl;
     }
     f.close();
 }
