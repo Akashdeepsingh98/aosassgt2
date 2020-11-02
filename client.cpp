@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
     int trackerport = 20001;
     struct hostent *trackerip = gethostbyname("127.0.0.1");
     struct sockaddr_in trackeraddr;
-    bzero((char *)&trackerip, sizeof(trackerip));
+    bzero((char *)&trackeraddr, sizeof(trackeraddr));
     trackeraddr.sin_family = AF_INET;
     bcopy((char *)trackerip->h_addr, (char *)&trackeraddr.sin_addr.s_addr, trackerip->h_length);
     trackeraddr.sin_port = htons(trackerport);
@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
     // tracker connection ready
-
+    cout << "works till here" << endl;
     int mysockfd = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in myaddr;
     string myipport = argv[1];
@@ -62,7 +62,9 @@ int main(int argc, char *argv[])
     {
         error(string("Cannot bind my_sock_fd and my_addr"));
     }
+    listen(mysockfd, 10);
     // my own socket
+    cout << "works till here" << endl;
 
     thread senthrman(SendThrMan, mysockfd, myip, myport);
     string ucom = "";
@@ -70,7 +72,8 @@ int main(int argc, char *argv[])
     while (true)
     {
         getline(cin, ucom);
-        stringstream ss(ucom);
+        stringstream ss;
+        ss << ucom;
         string command;
         ss >> command;
         if (ucom == "logout")
@@ -154,7 +157,7 @@ int main(int argc, char *argv[])
                     ofstream output;
                     int counter = 1;
                     string fullChunkName;
-                    char chunkbf[512 * 1024];
+                    char chunkbf[512 * 1024 + 1];
                     bzero(chunkbf, sizeof(chunkbf));
                     while (!mainfile.eof())
                     {
@@ -163,7 +166,7 @@ int main(int argc, char *argv[])
                         bzero(chunkbf, sizeof(chunkbf));
                         if (output.is_open())
                         {
-                            mainfile.read(chunkbf, sizeof(chunkbf));
+                            mainfile.read(chunkbf, sizeof(chunkbf) - 1);
                             output << chunkbf;
                             output.close();
                             counter++;
@@ -182,9 +185,11 @@ void SendThrMan(int mysockfd, string myip, string myport)
     struct sockaddr_in client_addr;
     socklen_t client_length = sizeof(client_addr);
     vector<int> client_sock_fds;
+    cout << "works till here" << endl;
     while (true)
     {
         bzero((char *)&client_addr, client_length);
+        cout << "works till here" << endl;
         client_sock_fds.push_back(accept(mysockfd, (struct sockaddr *)&client_addr, &client_length));
         sendthrs.push_back(thread(SendThread, client_sock_fds.back(), client_addr, myip, myport));
     }
@@ -192,15 +197,20 @@ void SendThrMan(int mysockfd, string myip, string myport)
 
 void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, string myport)
 {
+    stringstream temp;
+    auto myid = this_thread::get_id();
+    temp << myid;
+    ofstream senderlog("senderlog" + temp.str() + ".txt", ios::app);
     char mainbuffer[512 * 1024 + 1];
     bzero(mainbuffer, sizeof(mainbuffer));
 
     int n = read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
+    senderlog << mainbuffer << endl;
     stringstream ss;
     ss << mainbuffer;
     bzero(mainbuffer, sizeof(mainbuffer));
     string filename;
-
+    write(client_sockfd, "a", 1);
     string reqtype;
     ss >> reqtype;
     if (reqtype == "mainsender")
@@ -209,6 +219,7 @@ void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, 
         ss >> partnerip >> partnerport;
         read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
         filename = mainbuffer;
+        senderlog << mainbuffer << endl;
         bzero(mainbuffer, sizeof(mainbuffer));
         ifstream general;
         general.open(filename, ios::in | ios::binary);
@@ -228,12 +239,21 @@ void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, 
                 closedir(dp);
             }
             chunkcount -= 2;
-            string data = to_string(chunkcount);
+            string data = to_string(chunkcount) + " ";
+            for (int i = 0; i < avfiles[filename].size() - 1; i++)
+            {
+                data += avfiles[filename][i] + " ";
+            }
+            data += avfiles[filename].back();
+            n = write(client_sockfd, data.c_str(), data.size());
+            avfiles[filename].push_back(partnerip + ":" + partnerport);
+            ofstream avlog("avlog.txt");
+            avlog << filename << " ";
             for (int i = 0; i < avfiles[filename].size(); i++)
             {
-                data += avfiles[filename][i];
+                avlog << avfiles[filename][i] << " ";
             }
-            n = write(client_sockfd, data.c_str(), data.size());
+            avlog.close();
         }
         else
         {
@@ -243,16 +263,20 @@ void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, 
     }
     else
     {
-        n = read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
-        stringstream ss;
+        //n = read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
+        //senderlog << mainbuffer << endl;
+        //stringstream ss;
+        //ss << mainbuffer;
         int lowerbound, upperbound;
-        ss >> lowerbound >> upperbound;
-
+        ss >> filename >> lowerbound >> upperbound;
+        senderlog << "bounds: " << lowerbound << " " << upperbound << endl;
         bzero(mainbuffer, sizeof(mainbuffer));
         string chunkpref = folders[filename] + "/" + filename;
         for (int i = lowerbound; i <= upperbound; i++)
         {
+            senderlog << i << endl;
             string chunkname = chunkpref + "." + to_string(i);
+            senderlog << chunkname << endl;
             FILE *chunk = fopen(chunkname.c_str(), "r");
             char c;
             int j = 0;
@@ -261,9 +285,19 @@ void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, 
                 mainbuffer[j++] = c;
             }
             n = write(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
+            write(client_sockfd, "\0", 1);
+            //senderlog << mainbuffer << endl;
+            senderlog << n << endl;
+            n = read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
+            while (n <= 0)
+            {
+                n = read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
+            }
+            senderlog << mainbuffer << endl;
             bzero(mainbuffer, sizeof(mainbuffer));
         }
     }
+    senderlog.close();
 }
 
 void ReceiveThread(string masterip, string masterport, string filename, string dest_path, string myip, string myport)
@@ -284,9 +318,13 @@ void ReceiveThread(string masterip, string masterport, string filename, string d
     }
 
     // tell whether to act as mainsender or minisender
-    write(masterfd, (string("mainsender") + myip + " " + myport).c_str(), (string("mainsender") + myip + ":" + myport).size());
+    string msg = "mainsender " + myip + " " + myport;
+    write(masterfd, msg.c_str(), msg.size());
+    clientlog << msg << endl;
     char mainbuffer[512 * 1024 + 1];
+    read(masterfd, mainbuffer, sizeof(mainbuffer) - 1);
     bzero(mainbuffer, sizeof(mainbuffer));
+
     // send filename
     int n = write(masterfd, filename.c_str(), filename.size());
 
@@ -304,7 +342,7 @@ void ReceiveThread(string masterip, string masterport, string filename, string d
     ipsnportss >> chunkcount;
 
     vector<string> ipportvec;
-    while (ipsnportss.good())
+    while (!ipsnportss.eof())
     {
         string t;
         ipsnportss >> t;
@@ -323,19 +361,23 @@ void ReceiveThread(string masterip, string masterport, string filename, string d
         start += chunkcount / ipportvec.size();
     }
 
-    minRecThreads.push_back(thread(minRecv, filename, dest_path, ipportvec.back().substr(0, ipportvec.back().find(":")),
-                                   ipportvec.back().substr(ipportvec.back().find(":") + 1), start, chunkcount));
+    clientlog << ipportvec.back().substr(0, ipportvec.back().find(":")) << " " << ipportvec.back().substr(ipportvec.back().find(":") + 1) << start << " " << chunkcount << endl;
 
+    minRecThreads.push_back(thread(minRecv, filename, dest_path, ipportvec.back().substr(0, ipportvec.back().find(":")), ipportvec.back().substr(ipportvec.back().find(":") + 1), start, chunkcount));
     for (int i = 0; i < minRecThreads.size(); i++)
     {
         minRecThreads[i].join();
     }
-
+    folders[filename] = dest_path;
     clientlog.close();
 }
 
 void minRecv(string filename, string dest_path, string senderip, string senderport, int start, int end)
 {
+    stringstream temp;
+    auto myid = this_thread::get_id();
+    temp << myid;
+    ofstream clientlog("clientlog" + temp.str() + ".txt", ios::app);
     int senderfd = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in senderaddr;
     bzero((char *)&senderaddr, sizeof(senderaddr));
@@ -343,19 +385,47 @@ void minRecv(string filename, string dest_path, string senderip, string senderpo
     bcopy((char *)gethostbyname(senderip.c_str())->h_addr, (char *)&senderaddr.sin_addr.s_addr, gethostbyname(senderip.c_str())->h_length);
     senderaddr.sin_port = htons(atoi(senderport.c_str()));
 
-    write(senderfd, string("minisender" + to_string(start) + " " + to_string(end)).c_str(), string("minisender" + to_string(start) + " " + to_string(end)).size());
+    if (connect(senderfd, (struct sockaddr *)&senderaddr, sizeof(senderaddr)) < 0)
+    {
+        clientlog << "cannot connect to master\n";
+        return;
+    }
+    clientlog << start << " " << end << " " << endl;
+    string msg = "minisender " + filename + " " + to_string(start) + " " + to_string(end);
+    write(senderfd, msg.c_str(), msg.size());
 
     char mainbuffer[512 * 1024 + 1];
+    read(senderfd, mainbuffer, sizeof(mainbuffer) - 1);
+    clientlog << mainbuffer << endl;
     bzero(mainbuffer, sizeof(mainbuffer));
     ofstream f;
     for (int i = start; i <= end; i++)
     {
+        clientlog << i << endl;
         f.open(dest_path + "/" + filename + "." + to_string(i), ios::out | ios::trunc | ios::binary);
-        read(senderfd, mainbuffer, sizeof(mainbuffer) - 1);
-        f << mainbuffer;
-        f.close();
-        bzero(mainbuffer, sizeof(mainbuffer));
+        int n;
+        bool flag = true;
+        while (flag)
+        {
+            bzero(mainbuffer, sizeof(mainbuffer)); //clear the variable
+            n = read(senderfd, mainbuffer, 512);
+            clientlog << n << endl;
+            if (n <= 1 && mainbuffer[0] == '\0')
+            {
+                clientlog << "File " << i << " completed" << endl;
+                flag = false;
+                f.close();
+                string t = "a";
+                write(senderfd, t.c_str(), t.size());
+            }
+            else
+            {
+                //total_size += size_recv;
+                f << mainbuffer;
+            }
+        }
     }
+    clientlog.close();
 }
 
 void error(char *msg)
