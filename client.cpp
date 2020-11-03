@@ -25,6 +25,7 @@ void SendThrMan(int mysockfd, string myip, string myport);
 void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, string myport);
 map<string, vector<string>> avfiles;
 map<string, string> folders;
+map<string, vector<string>> mygroups;
 
 int main(int argc, char *argv[])
 {
@@ -369,6 +370,38 @@ void ReceiveThread(string masterip, string masterport, string filename, string d
         minRecThreads[i].join();
     }
     folders[filename] = dest_path;
+
+    {
+        string chunkfilename;
+        ofstream outputfile;
+        outputfile.open(filename, ios::out | ios::binary);
+        if (outputfile.is_open())
+        {
+            bool filefound = true;
+            int counter = 1;
+            int filesize = 0;
+            while (filefound)
+            {
+                filefound = false;
+                chunkfilename = filename + to_string(counter);
+                ifstream chunkinput;
+                chunkinput.open(chunkfilename, ios::in | ios::binary);
+
+                if (chunkinput.is_open())
+                {
+                    filefound = true;
+                    filesize = 512 * 1024;
+                    char inputbuf[filesize];
+                    bzero(inputbuf, sizeof(inputbuf));
+                    chunkinput >> inputbuf;
+                    outputfile << inputbuf;
+                    chunkinput.close();
+                }
+            }
+            outputfile.close();
+        }
+    }
+
     clientlog.close();
 }
 
