@@ -374,7 +374,7 @@ void ReceiveThread(string masterip, string masterport, string filename, string d
     {
         string chunkfilename;
         ofstream outputfile;
-        outputfile.open(filename, ios::out | ios::binary);
+        outputfile.open(dest_path + "/" + filename, ios::out | ios::binary);
         if (outputfile.is_open())
         {
             bool filefound = true;
@@ -383,7 +383,7 @@ void ReceiveThread(string masterip, string masterport, string filename, string d
             while (filefound)
             {
                 filefound = false;
-                chunkfilename = filename + to_string(counter);
+                chunkfilename = dest_path + "/" + filename + "." + to_string(counter);
                 ifstream chunkinput;
                 chunkinput.open(chunkfilename, ios::in | ios::binary);
 
@@ -396,7 +396,9 @@ void ReceiveThread(string masterip, string masterport, string filename, string d
                     chunkinput >> inputbuf;
                     outputfile << inputbuf;
                     chunkinput.close();
+                    remove(chunkfilename.c_str());
                 }
+                counter++;
             }
             outputfile.close();
         }
