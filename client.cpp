@@ -37,11 +37,21 @@ int main(int argc, char *argv[])
 
     int trackerfd = socket(AF_INET, SOCK_STREAM, 0);
     int trackerport = 20001;
-    struct hostent *trackerip = gethostbyname("127.0.0.1");
+    string trackerip;
+
+    {
+        string t;
+        ifstream trackerInfoFile(argv[1]);
+        getline(trackerInfoFile, trackerip);
+        getline(trackerInfoFile, t);
+        trackerport = atoi(t.c_str());
+    }
+
+    struct hostent *trackeriph = gethostbyname("127.0.0.1");
     struct sockaddr_in trackeraddr;
     bzero((char *)&trackeraddr, sizeof(trackeraddr));
     trackeraddr.sin_family = AF_INET;
-    bcopy((char *)trackerip->h_addr, (char *)&trackeraddr.sin_addr.s_addr, trackerip->h_length);
+    bcopy((char *)trackeriph->h_addr, (char *)&trackeraddr.sin_addr.s_addr, trackeriph->h_length);
     trackeraddr.sin_port = htons(trackerport);
     if (connect(trackerfd, (struct sockaddr *)&trackeraddr, sizeof(trackeraddr)) < 0)
     {
