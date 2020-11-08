@@ -41,13 +41,13 @@ int main(int argc, char *argv[])
 
     {
         string t;
-        ifstream trackerInfoFile(argv[1]);
+        ifstream trackerInfoFile(argv[2]);
         getline(trackerInfoFile, trackerip);
         getline(trackerInfoFile, t);
         trackerport = atoi(t.c_str());
     }
 
-    struct hostent *trackeriph = gethostbyname("127.0.0.1");
+    struct hostent *trackeriph = gethostbyname(trackerip.c_str());
     struct sockaddr_in trackeraddr;
     bzero((char *)&trackeraddr, sizeof(trackeraddr));
     trackeraddr.sin_family = AF_INET;
@@ -211,12 +211,12 @@ void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, 
     stringstream temp;
     auto myid = this_thread::get_id();
     temp << myid;
-    ofstream senderlog("senderlog" + temp.str() + ".txt", ios::app);
+    //ofstream senderlog("senderlog" + temp.str() + ".txt", ios::app);
     char mainbuffer[512 * 1024 + 1];
     bzero(mainbuffer, sizeof(mainbuffer));
 
     int n = read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
-    senderlog << mainbuffer << endl;
+    //senderlog << mainbuffer << endl;
     stringstream ss;
     ss << mainbuffer;
     bzero(mainbuffer, sizeof(mainbuffer));
@@ -230,7 +230,7 @@ void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, 
         ss >> partnerip >> partnerport;
         read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
         filename = mainbuffer;
-        senderlog << mainbuffer << endl;
+        //senderlog << mainbuffer << endl;
         bzero(mainbuffer, sizeof(mainbuffer));
         ifstream general;
         general.open(filename, ios::in | ios::binary);
@@ -274,20 +274,16 @@ void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, 
     }
     else
     {
-        //n = read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
-        //senderlog << mainbuffer << endl;
-        //stringstream ss;
-        //ss << mainbuffer;
         int lowerbound, upperbound;
         ss >> filename >> lowerbound >> upperbound;
-        senderlog << "bounds: " << lowerbound << " " << upperbound << endl;
+        //senderlog << "bounds: " << lowerbound << " " << upperbound << endl;
         bzero(mainbuffer, sizeof(mainbuffer));
         string chunkpref = folders[filename] + "/" + filename;
         for (int i = lowerbound; i <= upperbound; i++)
         {
-            senderlog << i << endl;
+            //senderlog << i << endl;
             string chunkname = chunkpref + "." + to_string(i);
-            senderlog << chunkname << endl;
+            //senderlog << chunkname << endl;
             FILE *chunk = fopen(chunkname.c_str(), "r");
             char c;
             int j = 0;
@@ -297,18 +293,17 @@ void SendThread(int client_sockfd, struct sockaddr_in client_addr, string myip, 
             }
             n = write(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
             write(client_sockfd, "\0", 1);
-            //senderlog << mainbuffer << endl;
-            senderlog << n << endl;
+            //senderlog << n << endl;
             n = read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
             while (n <= 0)
             {
                 n = read(client_sockfd, mainbuffer, sizeof(mainbuffer) - 1);
             }
-            senderlog << mainbuffer << endl;
+            //senderlog << mainbuffer << endl;
             bzero(mainbuffer, sizeof(mainbuffer));
         }
     }
-    senderlog.close();
+    //senderlog.close();
 }
 
 void ReceiveThread(string masterip, string masterport, string filename, string dest_path, string myip, string myport)
@@ -320,18 +315,18 @@ void ReceiveThread(string masterip, string masterport, string filename, string d
     bcopy((char *)gethostbyname(masterip.c_str())->h_addr, (char *)&masteraddr.sin_addr.s_addr, gethostbyname(masterip.c_str())->h_length);
     masteraddr.sin_port = htons(atoi(masterport.c_str()));
 
-    ofstream clientlog("clientlog.txt");
+    //ofstream clientlog("clientlog.txt");
 
     if (connect(masterfd, (struct sockaddr *)&masteraddr, sizeof(masteraddr)) < 0)
     {
-        clientlog << "cannot connect to master\n";
+        //clientlog << "cannot connect to master\n";
         return;
     }
 
     // tell whether to act as mainsender or minisender
     string msg = "mainsender " + myip + " " + myport;
     write(masterfd, msg.c_str(), msg.size());
-    clientlog << msg << endl;
+    //clientlog << msg << endl;
     char mainbuffer[512 * 1024 + 1];
     read(masterfd, mainbuffer, sizeof(mainbuffer) - 1);
     bzero(mainbuffer, sizeof(mainbuffer));
@@ -341,7 +336,7 @@ void ReceiveThread(string masterip, string masterport, string filename, string d
 
     // get chunkcount
     n = read(masterfd, mainbuffer, sizeof(mainbuffer) - 1);
-    clientlog << mainbuffer << endl;
+    //clientlog << mainbuffer << endl;
     if (string(mainbuffer) == "stop")
     {
         return;
@@ -372,7 +367,7 @@ void ReceiveThread(string masterip, string masterport, string filename, string d
         start += chunkcount / ipportvec.size();
     }
 
-    clientlog << ipportvec.back().substr(0, ipportvec.back().find(":")) << " " << ipportvec.back().substr(ipportvec.back().find(":") + 1) << start << " " << chunkcount << endl;
+    //clientlog << ipportvec.back().substr(0, ipportvec.back().find(":")) << " " << ipportvec.back().substr(ipportvec.back().find(":") + 1) << start << " " << chunkcount << endl;
 
     minRecThreads.push_back(thread(minRecv, filename, dest_path, ipportvec.back().substr(0, ipportvec.back().find(":")), ipportvec.back().substr(ipportvec.back().find(":") + 1), start, chunkcount));
     for (int i = 0; i < minRecThreads.size(); i++)
@@ -414,7 +409,7 @@ void ReceiveThread(string masterip, string masterport, string filename, string d
         }
     }
 
-    clientlog.close();
+    //clientlog.close();
 }
 
 void minRecv(string filename, string dest_path, string senderip, string senderport, int start, int end)
@@ -422,7 +417,7 @@ void minRecv(string filename, string dest_path, string senderip, string senderpo
     stringstream temp;
     auto myid = this_thread::get_id();
     temp << myid;
-    ofstream clientlog("clientlog" + temp.str() + ".txt", ios::app);
+    //ofstream clientlog("clientlog" + temp.str() + ".txt", ios::app);
     int senderfd = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in senderaddr;
     bzero((char *)&senderaddr, sizeof(senderaddr));
@@ -432,21 +427,21 @@ void minRecv(string filename, string dest_path, string senderip, string senderpo
 
     if (connect(senderfd, (struct sockaddr *)&senderaddr, sizeof(senderaddr)) < 0)
     {
-        clientlog << "cannot connect to master\n";
+        //clientlog << "cannot connect to master\n";
         return;
     }
-    clientlog << start << " " << end << " " << endl;
+    //clientlog << start << " " << end << " " << endl;
     string msg = "minisender " + filename + " " + to_string(start) + " " + to_string(end);
     write(senderfd, msg.c_str(), msg.size());
 
     char mainbuffer[512 * 1024 + 1];
     read(senderfd, mainbuffer, sizeof(mainbuffer) - 1);
-    clientlog << mainbuffer << endl;
+    //clientlog << mainbuffer << endl;
     bzero(mainbuffer, sizeof(mainbuffer));
     ofstream f;
     for (int i = start; i <= end; i++)
     {
-        clientlog << i << endl;
+        //clientlog << i << endl;
         f.open(dest_path + "/" + filename + "." + to_string(i), ios::out | ios::trunc | ios::binary);
         int n;
         bool flag = true;
@@ -454,10 +449,10 @@ void minRecv(string filename, string dest_path, string senderip, string senderpo
         {
             bzero(mainbuffer, sizeof(mainbuffer)); //clear the variable
             n = read(senderfd, mainbuffer, 512);
-            clientlog << n << endl;
+            //clientlog << n << endl;
             if (n <= 1 && mainbuffer[0] == '\0')
             {
-                clientlog << "File " << i << " completed" << endl;
+                //clientlog << "File " << i << " completed" << endl;
                 flag = false;
                 f.close();
                 string t = "a";
@@ -470,7 +465,7 @@ void minRecv(string filename, string dest_path, string senderip, string senderpo
             }
         }
     }
-    clientlog.close();
+    //clientlog.close();
 }
 
 void error(char *msg)
